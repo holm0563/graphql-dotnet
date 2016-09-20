@@ -60,7 +60,7 @@ namespace GraphQL.Introspection
                     }),
                 context =>
                 {
-                    if (context.Source is IObjectGraphType || context.Source is IInterfaceGraphType)
+                    if (context.Source is IObjectGraphType || context.Source is IInterfaceGraphType || context.Source is InputObjectGraphType)
                     {
                         
                         var includeDeprecated = context.GetArgument<bool>("includeDeprecated");
