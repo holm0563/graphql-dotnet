@@ -59,7 +59,7 @@ namespace GraphQL.Tests.Execution.Performance
             }
         }
 
-        private const int PerformanceIterations = 1000000;
+        private const int PerformanceIterations = 100000;
         private readonly List<Person> _people;
 
         private dynamic PeopleList => new
@@ -77,7 +77,11 @@ namespace GraphQL.Tests.Execution.Performance
         {
             var query = @"
                 query AQuery {
-                    people{name}
+                    people{
+                        name
+                        pets { ... on Named{name}}
+                        friends { ... on Named{name}}
+                    }
                 }
             ";
 
@@ -135,7 +139,7 @@ namespace GraphQL.Tests.Execution.Performance
             Assert.Null(runResult.Errors);
             Assert.Null(runResult2.Errors);
 
-            //Before performance improvements change largeListTimer.ElapsedMilliseconds = 16138, smallListTimer = 1597, with changes 14937, 1448
+            //Before performance improvements change largeListTimer.ElapsedMilliseconds = 1256, smallListTimer = 120
             //Test in a machine agnostic manner, we want better than O(N) performance
             Assert.True(differential < smallListTimer.ElapsedMilliseconds * 4);
         }
