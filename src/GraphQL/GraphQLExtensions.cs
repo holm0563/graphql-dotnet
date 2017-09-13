@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -13,9 +14,11 @@ namespace GraphQL
 {
     public static class GraphQLExtensions
     {
+        private static ConcurrentDictionary<string, string> TypeCache { get; } = new ConcurrentDictionary<string, string>();
+
         public static string TrimGraphQLTypes(this string name)
         {
-            return Regex.Replace(name, "[\\[!\\]]", "").Trim();
+            return TypeCache.GetOrAdd(name, t => Regex.Replace(name, "[\\[!\\]]", "").Trim());
         }
 
         public static bool IsCompositeType(this IGraphType type)
