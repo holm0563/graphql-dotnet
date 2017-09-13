@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -10,6 +11,8 @@ namespace GraphQL
     public static class ObjectExtensions
     {
         private static readonly Lazy<Conversions> _conversions = new Lazy<Conversions>(() => new Conversions());
+
+        private static ConcurrentDictionary<Type, IEnumerable<PropertyInfo>> PropertyInfos { get; } = new ConcurrentDictionary<Type, IEnumerable<PropertyInfo>>();
 
         public static T ToObject<T>(this IDictionary<string, object> source)
             where T : class, new()
@@ -23,12 +26,11 @@ namespace GraphQL
 
             foreach (var item in source)
             {
-                var propertyType = type.GetProperty(item.Key,
-                    BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
-                if (propertyType != null)
+                var propertyInfo = GetProperyInfo(type, item.Key);
+                if (propertyInfo != null)
                 {
-                    var value = GetPropertyValue(item.Value, propertyType.PropertyType);
-                    propertyType.SetValue(obj, value, null);
+                    var value = GetPropertyValue(item.Value, propertyInfo.PropertyType);
+                    propertyInfo.SetValue(obj, value, null);
                 }
             }
 
@@ -107,13 +109,29 @@ namespace GraphQL
 
         public static object GetProperyValue(this object obj, string propertyName)
         {
-            var val = obj.GetType()
-                .GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)
-                .GetValue(obj, null);
+            //var val = obj.GetType()
+            //    .GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)
+            //    .GetValue(obj, null);
 
-            return val;
+            //return val;
+
+            var type = obj.GetType();
+            var info = GetProperyInfo(type, propertyName);
+
+            var val2 = info?.GetValue(obj, null);
+
+            return val2;
         }
 
+        public static PropertyInfo GetProperyInfo(Type type, string propertyName)
+        {
+            var infos = PropertyInfos.GetOrAdd(type,
+                t => type.GetProperties(BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance));
+            var info = infos.FirstOrDefault(
+                t => String.Equals(t.Name, propertyName, StringComparison.OrdinalIgnoreCase));
+
+            return info;
+        }
 
         public static Type GetInterface(this Type type, string name)
         {
