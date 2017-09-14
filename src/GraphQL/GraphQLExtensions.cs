@@ -14,6 +14,9 @@ namespace GraphQL
 {
     public static class GraphQLExtensions
     {
+        /// <summary>
+        ///     This improves performance and was a top area when doing perforamance analysis lists.
+        /// </summary>
         private static ConcurrentDictionary<string, string> TypeCache { get; } = new ConcurrentDictionary<string, string>();
 
         public static string TrimGraphQLTypes(this string name)
