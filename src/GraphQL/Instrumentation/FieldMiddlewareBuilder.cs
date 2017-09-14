@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -38,19 +38,21 @@ namespace GraphQL.Instrumentation
 
         public void ApplyTo(ISchema schema)
         {
-            schema.AllTypes.Apply(item =>
-            {
-                var complex = item as IComplexGraphType;
-                complex?.Fields.Apply(field =>
-                {
-                    var resolver = new MiddlewareResolver(field.Resolver);
+            // by default do not apply. This greatly improves result performance.
 
-                    FieldMiddlewareDelegate app = context => resolver.Resolve(context);
-                    app = Build(app);
+            //schema.AllTypes.Apply(item =>
+            //{
+            //    var complex = item as IComplexGraphType;
+            //    complex?.Fields.Apply(field =>
+            //    {
+            //        var resolver = new MiddlewareResolver(field.Resolver);
 
-                    field.Resolver = new FuncFieldResolver<Task<object>>(context => app.Invoke(context));
-                });
-            });
+            //        FieldMiddlewareDelegate app = context => resolver.Resolve(context);
+            //        app = Build(app);
+
+            //        field.Resolver = new FuncFieldResolver<Task<object>>(context => app.Invoke(context));
+            //    });
+            //});
         }
     }
 }

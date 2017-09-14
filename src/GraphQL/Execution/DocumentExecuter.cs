@@ -265,16 +265,18 @@ namespace GraphQL
 
             foreach (var fieldCollection in fields)
             {
+                context.CancellationToken.ThrowIfCancellationRequested();
+
                 var field = fieldCollection.Value?.FirstOrDefault();
                 var fieldType = GetFieldDefinition(context.Schema, rootType, field);
 
+                if (!ShouldIncludeNode(context, field.Directives))
+                {
+                    continue;
+                }
+
                 if (CanResolveFromData(field, fieldType))
                 {
-                    if (!ShouldIncludeNode(context, field.Directives))
-                    {
-                        continue;
-                    }
-
                     var name = field.Alias ?? field.Name;
                     if (data.ContainsKey(name))
                     {
@@ -283,13 +285,28 @@ namespace GraphQL
 
                     // part of a performance problem. we don't want to async resolve simple fields with a middleware layer inbetween.
 
-                    //var value = fieldType.Resolver != null ?
-                    //    fieldType.Resolver.Resolve(new ResolveFieldContext(context, field, fieldType, source, rootType, null))
-                    //    : NameFieldResolver.Resolve(source, name);
+                    object result = null;
 
-                    var value = NameFieldResolver.Resolve(source, name);
-                    var scalarType = fieldType?.ResolvedType as ScalarGraphType;
-                    var result = scalarType?.Serialize(value);
+                    if (fieldType.Resolver != null)
+                    {
+                        var rfc = new ResolveFieldContext(context, field, fieldType, source, rootType, null);
+                        try
+                        {
+                            result = fieldType.Resolver.Resolve(rfc); //should be a result not a task
+                        }
+                        catch(Exception exc)
+                        {
+                            var error = new ExecutionError($"Error trying to resolve {field.Name}.", exc);
+                            error.AddLocation(field, context.Document);
+                            context.Errors.Add(error);
+                        }
+                    }
+                    else
+                    {
+                        var value = NameFieldResolver.Resolve(source, field.Name);
+                        var scalarType = fieldType?.ResolvedType as ScalarGraphType;
+                        result = scalarType?.Serialize(value);
+                    }
 
                     data.Add(fieldCollection.Key, result);
                 }
@@ -297,20 +314,20 @@ namespace GraphQL
                 {
                     var result = await ResolveFieldAsync(context, rootType, source, fieldCollection.Value, fieldType);
 
+                    if (result.Skip)
+                    {
+                        continue;
+                    }
+
                     data.Add(fieldCollection.Key, result.Value);
                 }
             }
 
             return data;
-
-            //return fields.ToDictionaryAsync<KeyValuePair<string, Fields>, string, ResolveFieldResult<object>, object>(
-            //    pair => pair.Key,
-            //    pair => ResolveFieldAsync(context, rootType, source, pair.Value));
         }
 
         private bool CanResolveFromData(Field field, FieldType type)
         {
-            // The methods are passing around Fields when most expect only one to exist. This isn't optimal and should be cleaned up at some point. For now if a fringe case exists process these indepedent.
             if (field == null || type == null)
             {
                 return false;
@@ -323,6 +340,11 @@ namespace GraphQL
             }
 
             if (!(type.ResolvedType is ScalarGraphType))
+            {
+                return false;
+            }
+
+            if (type.ResolvedType is NonNullGraphType)
             {
                 return false;
             }
