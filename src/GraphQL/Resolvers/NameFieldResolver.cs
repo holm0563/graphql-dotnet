@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using GraphQL.Types;
 
@@ -6,8 +6,6 @@ namespace GraphQL.Resolvers
 {
     internal class NameFieldResolver : IFieldResolver
     {
-        private BindingFlags _flags = BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance;
-
         public object Resolve(ResolveFieldContext context)
         {
             var source = context.Source;
@@ -17,8 +15,7 @@ namespace GraphQL.Resolvers
                 return null;
             }
 
-            var prop = source.GetType()
-                .GetProperty(context.FieldAst.Name, _flags);
+            var prop = ObjectExtensions.GetProperyInfo(source.GetType(),context.FieldAst.Name);
 
             if (prop == null)
             {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -259,11 +259,84 @@ namespace GraphQL
             return ExecuteFieldsAsync(context, rootType, context.RootValue, fields);
         }
 
-        public Task<Dictionary<string, object>> ExecuteFieldsAsync(ExecutionContext context, IObjectGraphType rootType, object source, Dictionary<string, Fields> fields)
+        public async Task<Dictionary<string, object>> ExecuteFieldsAsync(ExecutionContext context, IObjectGraphType rootType, object source, Dictionary<string, Fields> fields)
         {
-            return fields.ToDictionaryAsync<KeyValuePair<string, Fields>, string, ResolveFieldResult<object>, object>(
-                pair => pair.Key,
-                pair => ResolveFieldAsync(context, rootType, source, pair.Value));
+            var data = new Dictionary<string, object>();
+
+            foreach (var field in fields )
+            {
+                //if (CanResolveFromData(field, source))
+                //{
+                //    var result = ResolveField(context, rootType, field, source);
+
+                //    data.Add(field.Key, result);
+                //}
+                //else
+                {
+                    var result = await ResolveFieldAsync(context, rootType, source, field.Value);
+
+                    data.Add(field.Key, result.Value);
+                }
+            }
+
+            return data;
+
+            //return fields.ToDictionaryAsync<KeyValuePair<string, Fields>, string, ResolveFieldResult<object>, object>(
+            //    pair => pair.Key,
+            //    pair => ResolveFieldAsync(context, rootType, source, pair.Value));
+        }
+
+        /// <summary>
+        ///     Resolve the field in a simple flow. This avoids recursion to improve performance
+        /// </summary>
+       ///<remarks></remarks>
+        public object ResolveField(ExecutionContext context, IObjectGraphType fieldType, Field field,
+            object result)
+        {
+            if (!field.SelectionSet.Selections.All(t => t is Field))
+            {
+                return null;
+            }
+
+            var optimizedResults = new Dictionary<string, object>();
+
+            foreach (Field selection in field.SelectionSet.Selections)
+            {
+                if (!ShouldIncludeNode(context, field.Directives))
+                {
+                    continue;
+                }
+
+                var name = selection.Alias ?? selection.Name;
+                if (optimizedResults.ContainsKey(name))
+                {
+                    continue;
+                }
+
+                var definition = fieldType.Fields.FirstOrDefault(f => f.Name == selection.Name);
+                var scalarType = definition?.ResolvedType as ScalarGraphType;
+
+                if (scalarType == null)
+                {
+                    //can't optimize
+                    return null;
+                }
+
+                var prop = ObjectExtensions.GetProperyInfo(result.GetType(), selection.Name);
+
+                if (prop == null)
+                {
+                    throw new InvalidOperationException($"Expected to find property {selection.Name} on {result.GetType().Name} but it does not exist.");
+                }
+
+                var value = prop.GetValue(result, null);
+
+                var coercedValue = scalarType.Serialize(value);
+
+                optimizedResults[name] = coercedValue;
+            }
+
+            return optimizedResults;
         }
 
         public async Task<ResolveFieldResult<object>> ResolveFieldAsync(ExecutionContext context, IObjectGraphType parentType, object source, Fields fields)
@@ -288,6 +361,7 @@ namespace GraphQL
 
             try
             {
+                //object pool?
                 var resolveContext = new ResolveFieldContext();
                 resolveContext.FieldName = field.Name;
                 resolveContext.FieldAst = field;
