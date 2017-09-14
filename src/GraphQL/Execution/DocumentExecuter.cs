@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -288,6 +288,7 @@ namespace GraphQL
 
             try
             {
+                //object pool?
                 var resolveContext = new ResolveFieldContext();
                 resolveContext.FieldName = field.Name;
                 resolveContext.FieldAst = field;
@@ -436,7 +437,63 @@ namespace GraphQL
                 subFields = CollectFields(context, objectType, f.SelectionSet, subFields, visitedFragments);
             });
 
+            var data = ProcessData(context, objectType, field, result);
+
+            if (data != null)
+            {
+                return data;
+            }
+
             return await ExecuteFieldsAsync(context, objectType, result, subFields).ConfigureAwait(false);
+        }
+
+        public object ProcessData(ExecutionContext context, IObjectGraphType fieldType, Field field,
+            object result)
+        {
+            if (!field.SelectionSet.Selections.All(t => t is Field))
+            {
+                return null;
+            }
+
+            var optimizedResults = new Dictionary<string, object>();
+
+            foreach (Field selection in field.SelectionSet.Selections)
+            {
+                if (!ShouldIncludeNode(context, field.Directives))
+                {
+                    continue;
+                }
+
+                var name = selection.Alias ?? selection.Name;
+                if (optimizedResults.ContainsKey(name))
+                {
+                    continue;
+                }
+
+                var definition = fieldType.Fields.FirstOrDefault(f => f.Name == selection.Name);
+                var scalarType = definition?.ResolvedType as ScalarGraphType;
+
+                if (scalarType == null)
+                {
+                    //can't optimize
+                    return null;
+                }
+
+                var prop = ObjectExtensions.GetProperyInfo(result.GetType(), selection.Name);
+
+                if (prop == null)
+                {
+                    throw new InvalidOperationException($"Expected to find property {selection.Name} on {result.GetType().Name} but it does not exist.");
+                }
+
+                var value = prop.GetValue(result, null);
+
+                var coercedValue = scalarType.Serialize(value);
+
+                optimizedResults[name] = coercedValue;
+            }
+
+            return optimizedResults;
         }
 
         public Dictionary<string, object> GetArgumentValues(ISchema schema, QueryArguments definitionArguments, Arguments astArguments, Variables variables)

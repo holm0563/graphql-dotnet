@@ -83,6 +83,13 @@ namespace GraphQL.Tests.Execution.Performance
                 }
             ";
 
+            query = @"
+                query AQuery {
+                    people{name
+                   }
+                }
+            ";
+
             //let everything initialize
             var runResultPreflight = Executer.ExecuteAsync(_ =>
             {
