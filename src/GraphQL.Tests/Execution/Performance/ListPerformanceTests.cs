@@ -73,6 +73,76 @@ namespace GraphQL.Tests.Execution.Performance
         };
 
         [Fact]
+        public void Executes_SimpleLists_Are_Performant()
+        {
+            var query = @"
+                query AQuery {
+                    people{
+                        name
+                    }
+                }
+            ";
+
+            //let everything initialize
+            var runResultPreflight = Executer.ExecuteAsync(_ =>
+            {
+                _.Schema = Schema;
+                _.Query = query;
+                _.Root = PeopleListSmall;
+                _.Inputs = null;
+                _.UserContext = null;
+                _.CancellationToken = default(CancellationToken);
+                _.ValidationRules = null;
+                _.FieldNameConverter = new CamelCaseFieldNameConverter();
+            }).GetAwaiter().GetResult();
+
+            var smallListTimer = new Stopwatch();
+
+            smallListTimer.Start();
+
+            var runResult2 = Executer.ExecuteAsync(_ =>
+            {
+                _.Schema = Schema;
+                _.Query = query;
+                _.Root = PeopleListSmall;
+                _.Inputs = null;
+                _.UserContext = null;
+                _.CancellationToken = default(CancellationToken);
+                _.ValidationRules = null;
+                _.FieldNameConverter = new CamelCaseFieldNameConverter();
+            }).GetAwaiter().GetResult();
+
+            smallListTimer.Stop();
+
+            var largeListTimer = new Stopwatch();
+
+            largeListTimer.Start();
+
+            var runResult = Executer.ExecuteAsync(_ =>
+            {
+                _.Schema = Schema;
+                _.Query = query;
+                _.Root = PeopleList;
+                _.Inputs = null;
+                _.UserContext = null;
+                _.CancellationToken = default(CancellationToken);
+                _.ValidationRules = null;
+                _.FieldNameConverter = new CamelCaseFieldNameConverter();
+            }).GetAwaiter().GetResult();
+
+            largeListTimer.Stop();
+
+            var differential = largeListTimer.ElapsedMilliseconds - smallListTimer.ElapsedMilliseconds;
+
+            Assert.Null(runResult.Errors);
+            Assert.Null(runResult2.Errors);
+
+            //Before performance improvements change largeListTimer.ElapsedMilliseconds = 882, smallListTimer = 84
+            //Test in a machine agnostic manner, we want better than O(N) performance
+            Assert.True(differential < smallListTimer.ElapsedMilliseconds * 2);
+        }
+
+        [Fact]
         public void Executes_Lists_Are_Performant()
         {
             var query = @"
@@ -139,7 +209,7 @@ namespace GraphQL.Tests.Execution.Performance
             Assert.Null(runResult.Errors);
             Assert.Null(runResult2.Errors);
 
-            //Before performance improvements change largeListTimer.ElapsedMilliseconds = 1256, smallListTimer = 120
+            //Before performance improvements change largeListTimer.ElapsedMilliseconds = 7394, smallListTimer = 792
             //Test in a machine agnostic manner, we want better than O(N) performance
             Assert.True(differential < smallListTimer.ElapsedMilliseconds * 4);
         }

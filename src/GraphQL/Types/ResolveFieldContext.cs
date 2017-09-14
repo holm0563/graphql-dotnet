@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Threading;
+using GraphQL.Execution;
 using GraphQL.Instrumentation;
 using GraphQL.Language.AST;
 using Field = GraphQL.Language.AST.Field;
@@ -104,6 +105,31 @@ namespace GraphQL.Types
         internal ResolveFieldContext<TSourceType> As<TSourceType>()
         {
             return new ResolveFieldContext<TSourceType>(this);
+        }
+
+        public ResolveFieldContext()
+        {
+        }
+
+        public ResolveFieldContext(GraphQL.Execution.ExecutionContext context, Field field, FieldType type, object source, IObjectGraphType parentType, Dictionary<string, object> arguments)
+        {
+                Source = source;
+                FieldName = field.Name;
+                FieldAst = field;
+                FieldDefinition = type;
+                ReturnType = type.ResolvedType;
+                ParentType = parentType;
+                Arguments = arguments;
+                Schema = context.Schema;
+                Document = context.Document;
+                Fragments = context.Fragments;
+                RootValue = context.RootValue;
+                UserContext = context.UserContext;
+                Operation = context.Operation;
+                Variables = context.Variables;
+                CancellationToken = context.CancellationToken;
+                Metrics = context.Metrics;
+                Errors = context.Errors;
         }
     }
 }

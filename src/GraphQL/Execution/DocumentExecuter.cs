@@ -263,19 +263,41 @@ namespace GraphQL
         {
             var data = new Dictionary<string, object>();
 
-            foreach (var field in fields )
+            foreach (var fieldCollection in fields)
             {
-                //if (CanResolveFromData(field, source))
-                //{
-                //    var result = ResolveField(context, rootType, field, source);
+                var field = fieldCollection.Value?.FirstOrDefault();
+                var fieldType = GetFieldDefinition(context.Schema, rootType, field);
 
-                //    data.Add(field.Key, result);
-                //}
-                //else
+                if (CanResolveFromData(field, fieldType))
                 {
-                    var result = await ResolveFieldAsync(context, rootType, source, field.Value);
+                    if (!ShouldIncludeNode(context, field.Directives))
+                    {
+                        continue;
+                    }
 
-                    data.Add(field.Key, result.Value);
+                    var name = field.Alias ?? field.Name;
+                    if (data.ContainsKey(name))
+                    {
+                        continue;
+                    }
+
+                    // part of a performance problem. we don't want to async resolve simple fields with a middleware layer inbetween.
+
+                    //var value = fieldType.Resolver != null ?
+                    //    fieldType.Resolver.Resolve(new ResolveFieldContext(context, field, fieldType, source, rootType, null))
+                    //    : NameFieldResolver.Resolve(source, name);
+
+                    var value = NameFieldResolver.Resolve(source, name);
+                    var scalarType = fieldType?.ResolvedType as ScalarGraphType;
+                    var result = scalarType?.Serialize(value);
+
+                    data.Add(fieldCollection.Key, result);
+                }
+                else
+                {
+                    var result = await ResolveFieldAsync(context, rootType, source, fieldCollection.Value, fieldType);
+
+                    data.Add(fieldCollection.Key, result.Value);
                 }
             }
 
@@ -286,60 +308,29 @@ namespace GraphQL
             //    pair => ResolveFieldAsync(context, rootType, source, pair.Value));
         }
 
-        /// <summary>
-        ///     Resolve the field in a simple flow. This avoids recursion to improve performance
-        /// </summary>
-       ///<remarks></remarks>
-        public object ResolveField(ExecutionContext context, IObjectGraphType fieldType, Field field,
-            object result)
+        private bool CanResolveFromData(Field field, FieldType type)
         {
-            if (!field.SelectionSet.Selections.All(t => t is Field))
+            // The methods are passing around Fields when most expect only one to exist. This isn't optimal and should be cleaned up at some point. For now if a fringe case exists process these indepedent.
+            if (field == null || type == null)
             {
-                return null;
+                return false;
             }
 
-            var optimizedResults = new Dictionary<string, object>();
-
-            foreach (Field selection in field.SelectionSet.Selections)
+            if (type.Arguments != null &&
+                type.Arguments.Any())
             {
-                if (!ShouldIncludeNode(context, field.Directives))
-                {
-                    continue;
-                }
-
-                var name = selection.Alias ?? selection.Name;
-                if (optimizedResults.ContainsKey(name))
-                {
-                    continue;
-                }
-
-                var definition = fieldType.Fields.FirstOrDefault(f => f.Name == selection.Name);
-                var scalarType = definition?.ResolvedType as ScalarGraphType;
-
-                if (scalarType == null)
-                {
-                    //can't optimize
-                    return null;
-                }
-
-                var prop = ObjectExtensions.GetProperyInfo(result.GetType(), selection.Name);
-
-                if (prop == null)
-                {
-                    throw new InvalidOperationException($"Expected to find property {selection.Name} on {result.GetType().Name} but it does not exist.");
-                }
-
-                var value = prop.GetValue(result, null);
-
-                var coercedValue = scalarType.Serialize(value);
-
-                optimizedResults[name] = coercedValue;
+                return false;
             }
 
-            return optimizedResults;
+            if (!(type.ResolvedType is ScalarGraphType))
+            {
+                return false;
+            }
+
+            return true;
         }
 
-        public async Task<ResolveFieldResult<object>> ResolveFieldAsync(ExecutionContext context, IObjectGraphType parentType, object source, Fields fields)
+        public async Task<ResolveFieldResult<object>> ResolveFieldAsync(ExecutionContext context, IObjectGraphType parentType, object source, Fields fields, FieldType fieldDefinition)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
@@ -350,7 +341,6 @@ namespace GraphQL
 
             var field = fields.First();
 
-            var fieldDefinition = GetFieldDefinition(context.Schema, parentType, field);
             if (fieldDefinition == null)
             {
                 resolveResult.Skip = true;
@@ -361,26 +351,7 @@ namespace GraphQL
 
             try
             {
-                //object pool?
-                var resolveContext = new ResolveFieldContext();
-                resolveContext.FieldName = field.Name;
-                resolveContext.FieldAst = field;
-                resolveContext.FieldDefinition = fieldDefinition;
-                resolveContext.ReturnType = fieldDefinition.ResolvedType;
-                resolveContext.ParentType = parentType;
-                resolveContext.Arguments = arguments;
-                resolveContext.Source = source;
-                resolveContext.Schema = context.Schema;
-                resolveContext.Document = context.Document;
-                resolveContext.Fragments = context.Fragments;
-                resolveContext.RootValue = context.RootValue;
-                resolveContext.UserContext = context.UserContext;
-                resolveContext.Operation = context.Operation;
-                resolveContext.Variables = context.Variables;
-                resolveContext.CancellationToken = context.CancellationToken;
-                resolveContext.Metrics = context.Metrics;
-                resolveContext.Errors = context.Errors;
-
+                var resolveContext = new ResolveFieldContext(context, field, fieldDefinition, source, parentType, arguments);
                 var resolver = fieldDefinition.Resolver ?? new NameFieldResolver();
                 var result = resolver.Resolve(resolveContext);
 
