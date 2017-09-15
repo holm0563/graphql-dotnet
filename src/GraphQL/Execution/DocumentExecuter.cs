@@ -263,27 +263,37 @@ namespace GraphQL
         public async Task<Dictionary<string, object>> ExecuteFieldsAsync(ExecutionContext context, IObjectGraphType rootType, object source, Dictionary<string, Fields> fields)
         {
             var data = new Dictionary<string, object>();
+            var externalTasks = new List<Task>();
 
             foreach (var fieldCollection in fields)
             {
-                await ExtractFieldAsync(context, rootType, source, fieldCollection, data);
+                var field = fieldCollection.Value?.FirstOrDefault();
+                var fieldType = GetFieldDefinition(context.Schema, rootType, field);
+
+                if (fieldType.Resolver == null)
+                {
+                    //simple to resolve, to expensive to use a task.
+                    await ExtractFieldAsync(context, rootType, source, field, fieldType, data);
+                }
+                else
+                {
+                    externalTasks.Add(ExtractFieldAsync(context, rootType, source, field, fieldType, data));
+                }
             }
 
-            //doing this async is twice as slow. My guess is too many very quick tasks async done.
-            //var scheduleTaskList = fields.Select(field =>
-            //    ExtractFieldAsync(context, rootType, source, field, data));
-            //await Task.WhenAll(scheduleTaskList);
+            if (externalTasks.Any())
+            {
+                await Task.WhenAll(externalTasks);
+            }
 
             return data;
         }
 
         private async Task ExtractFieldAsync(ExecutionContext context, IObjectGraphType rootType, object source,
-            KeyValuePair<string, Fields> fieldCollection, Dictionary<string, object> data)
+            Field field, FieldType fieldType, Dictionary<string, object> data)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
-            var field = fieldCollection.Value?.FirstOrDefault();
-            var fieldType = GetFieldDefinition(context.Schema, rootType, field);
             var name = field.Alias ?? field.Name;
 
             if (data.ContainsKey(name))
@@ -304,7 +314,7 @@ namespace GraphQL
             }
             else
             {
-                var result = await ResolveFieldAsync(context, rootType, source, fieldCollection.Value, fieldType);
+                var result = await ResolveFieldAsync(context, rootType, source, field, fieldType);
 
                 if (result.Skip)
                 {
@@ -348,31 +358,11 @@ namespace GraphQL
             {
                 foreach (var node in data)
                 {
-                    var nodeResult = await CompleteValueAsync(context, listInfo?.ResolvedType, new Fields { field }, node).ConfigureAwait(false);
+                    var nodeResult = await CompleteValueAsync(context, listInfo?.ResolvedType, field, node).ConfigureAwait(false);
 
                     result.Add(nodeResult);
                 }
             }
-
-            //note running these truly async is much slower
-            //if (subType != null)
-            //{
-            //    var scheduleTaskList = data.Cast<object>().Select(node => ExecuteFieldsAsync(context, subType, node, subFields));
-
-            //    await Task.WhenAll(scheduleTaskList);
-
-            //    result.AddRange(scheduleTaskList.Select(t => t.Result));
-
-            //}
-            //else
-            //{
-            //    var scheduleTaskList = data.Cast<object>()
-            //        .Select(node => CompleteValueAsync(context, listInfo?.ResolvedType, new Fields { field }, node));
-
-            //    await Task.WhenAll(scheduleTaskList);
-
-            //    result.AddRange(scheduleTaskList.Select(t => t.Result));
-            //}
 
             return result;
         }
@@ -455,7 +445,7 @@ namespace GraphQL
             return true;
         }
 
-        public async Task<ResolveFieldResult<object>> ResolveFieldAsync(ExecutionContext context, IObjectGraphType parentType, object source, Fields fields, FieldType fieldDefinition)
+        public async Task<ResolveFieldResult<object>> ResolveFieldAsync(ExecutionContext context, IObjectGraphType parentType, object source, Field field, FieldType fieldDefinition)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
@@ -463,8 +453,6 @@ namespace GraphQL
             {
                 Skip = false
             };
-
-            var field = fields.First();
 
             if (fieldDefinition == null)
             {
@@ -497,7 +485,7 @@ namespace GraphQL
                 }
 
                 resolveResult.Value =
-                    await CompleteValueAsync(context, fieldDefinition.ResolvedType, fields, result).ConfigureAwait(false);
+                    await CompleteValueAsync(context, fieldDefinition.ResolvedType, field, result).ConfigureAwait(false);
                 return resolveResult;
             }
             catch (Exception exc)
@@ -515,16 +503,15 @@ namespace GraphQL
             return resolveResult;
         }
 
-        public async Task<object> CompleteValueAsync(ExecutionContext context, IGraphType fieldType, Fields fields, object result)
+        public async Task<object> CompleteValueAsync(ExecutionContext context, IGraphType fieldType, Field field, object result)
         {
-            var field = fields != null ? fields.FirstOrDefault() : null;
-            var fieldName = field != null ? field.Name : null;
+            var fieldName = field?.Name;
 
             var nonNullType = fieldType as NonNullGraphType;
             if (nonNullType != null)
             {
                 var type = nonNullType.ResolvedType;
-                var completed = await CompleteValueAsync(context, type, fields, result).ConfigureAwait(false);
+                var completed = await CompleteValueAsync(context, type, field, result).ConfigureAwait(false);
                 if (completed == null)
                 {
                     var error = new ExecutionError("Cannot return null for non-null type. Field: {0}, Type: {1}!."
@@ -589,10 +576,7 @@ namespace GraphQL
             var subFields = new Dictionary<string, Fields>();
             var visitedFragments = new List<string>();
 
-            fields.Apply(f =>
-            {
-                subFields = CollectFields(context, objectType, f.SelectionSet, subFields, visitedFragments);
-            });
+            CollectFields(context, objectType, field?.SelectionSet, subFields, visitedFragments);
 
             return await ExecuteFieldsAsync(context, objectType, result, subFields).ConfigureAwait(false);
         }
