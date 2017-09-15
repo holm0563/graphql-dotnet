@@ -4,7 +4,11 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using GraphQL.Conversion;
+using GraphQL.Execution;
+using GraphQL.StarWars;
 using GraphQL.Types;
+using GraphQL.Validation;
+using GraphQL.Validation.Complexity;
 using Xunit;
 
 namespace GraphQL.Tests.Execution.Performance
@@ -59,7 +63,7 @@ namespace GraphQL.Tests.Execution.Performance
             }
         }
 
-        private const int PerformanceIterations = 100000;
+        private const int PerformanceIterations = 1000000;
         private readonly List<Person> _people;
 
         private dynamic PeopleList => new
@@ -69,8 +73,54 @@ namespace GraphQL.Tests.Execution.Performance
 
         private dynamic PeopleListSmall => new
         {
-            people = _people.Take(PerformanceIterations / 10)
+            people = _people.Take(100)
         };
+
+        [Fact]
+        public void Executes_UnionLists_Are_Performant()
+        {
+            var query = @"
+                query AQuery {
+                    people{
+                      __typename
+                      name
+                      pets {
+                        __typename
+                        ... on Dog {
+                          name
+                          barks
+                        },
+                        ... on Cat {
+                          name
+                          meows
+                        }
+                      }
+                    }
+                }
+            ";
+
+            var smallListTimer = new Stopwatch();
+
+            smallListTimer.Start();
+
+            var runResult2 = Executer.ExecuteAsync(_ =>
+            {
+                _.Schema = Schema;
+                _.Query = query;
+                _.Root = PeopleList;
+                _.Inputs = null;
+                _.UserContext = null;
+                _.CancellationToken = default(CancellationToken);
+                _.ValidationRules = null;
+                _.FieldNameConverter = new CamelCaseFieldNameConverter();
+            }).GetAwaiter().GetResult();
+
+            smallListTimer.Stop();
+
+            Assert.Null(runResult2.Errors);
+
+            Assert.True(smallListTimer.ElapsedMilliseconds < 415 * 2); //machine specific data with a buffer
+        }
 
         [Fact]
         public void Executes_SimpleLists_Are_Performant()
@@ -83,19 +133,6 @@ namespace GraphQL.Tests.Execution.Performance
                 }
             ";
 
-            //let everything initialize
-            var runResultPreflight = Executer.ExecuteAsync(_ =>
-            {
-                _.Schema = Schema;
-                _.Query = query;
-                _.Root = PeopleListSmall;
-                _.Inputs = null;
-                _.UserContext = null;
-                _.CancellationToken = default(CancellationToken);
-                _.ValidationRules = null;
-                _.FieldNameConverter = new CamelCaseFieldNameConverter();
-            }).GetAwaiter().GetResult();
-
             var smallListTimer = new Stopwatch();
 
             smallListTimer.Start();
@@ -114,59 +151,40 @@ namespace GraphQL.Tests.Execution.Performance
 
             smallListTimer.Stop();
 
-            var largeListTimer = new Stopwatch();
-
-            largeListTimer.Start();
-
-            var runResult = Executer.ExecuteAsync(_ =>
-            {
-                _.Schema = Schema;
-                _.Query = query;
-                _.Root = PeopleList;
-                _.Inputs = null;
-                _.UserContext = null;
-                _.CancellationToken = default(CancellationToken);
-                _.ValidationRules = null;
-                _.FieldNameConverter = new CamelCaseFieldNameConverter();
-            }).GetAwaiter().GetResult();
-
-            largeListTimer.Stop();
-
-            var differential = largeListTimer.ElapsedMilliseconds - smallListTimer.ElapsedMilliseconds;
-
-            Assert.Null(runResult.Errors);
             Assert.Null(runResult2.Errors);
 
-            //Before performance improvements change largeListTimer.ElapsedMilliseconds = 882, smallListTimer = 84
-            //Test in a machine agnostic manner, we want better than O(N) performance
-            Assert.True(differential < smallListTimer.ElapsedMilliseconds * 2);
+            Assert.True(smallListTimer.ElapsedMilliseconds < 393 * 2); //machine specific data with a buffer
         }
 
         [Fact]
-        public void Executes_Lists_Are_Performant()
+        public void Executes_MultipleProperties_Are_Performant()
         {
             var query = @"
                 query AQuery {
                     people{
                         name
-                        pets { ... on Named{name}}
-                        friends { ... on Named{name}}
+                        name1:name
+                        name2:name
+                        name3:name
+                        name4:name
+                        name5:name
+                        name6:name
+                        name7:name
+                        name8:name
+                        name9:name
+                        name10:name
+                        name11:name
+                        name12:name
+                        name13:name
+                        name14:name
+                        name15:name
+                        name16:name
+                        name17:name
+                        name18:name
+                        name19:name
                     }
                 }
             ";
-
-            //let everything initialize
-            var runResultPreflight = Executer.ExecuteAsync(_ =>
-            {
-                _.Schema = Schema;
-                _.Query = query;
-                _.Root = PeopleListSmall;
-                _.Inputs = null;
-                _.UserContext = null;
-                _.CancellationToken = default(CancellationToken);
-                _.ValidationRules = null;
-                _.FieldNameConverter = new CamelCaseFieldNameConverter();
-            }).GetAwaiter().GetResult();
 
             var smallListTimer = new Stopwatch();
 
@@ -186,32 +204,9 @@ namespace GraphQL.Tests.Execution.Performance
 
             smallListTimer.Stop();
 
-            var largeListTimer = new Stopwatch();
-
-            largeListTimer.Start();
-
-            var runResult = Executer.ExecuteAsync(_ =>
-            {
-                _.Schema = Schema;
-                _.Query = query;
-                _.Root = PeopleList;
-                _.Inputs = null;
-                _.UserContext = null;
-                _.CancellationToken = default(CancellationToken);
-                _.ValidationRules = null;
-                _.FieldNameConverter = new CamelCaseFieldNameConverter();
-            }).GetAwaiter().GetResult();
-
-            largeListTimer.Stop();
-
-            var differential = largeListTimer.ElapsedMilliseconds - smallListTimer.ElapsedMilliseconds;
-
-            Assert.Null(runResult.Errors);
             Assert.Null(runResult2.Errors);
 
-            //Before performance improvements change largeListTimer.ElapsedMilliseconds = 7394, smallListTimer = 792
-            //Test in a machine agnostic manner, we want better than O(N) performance
-            Assert.True(differential < smallListTimer.ElapsedMilliseconds * 4);
+            Assert.True(smallListTimer.ElapsedMilliseconds < 398 * 2); //machine specific data with a buffer
         }
     }
 

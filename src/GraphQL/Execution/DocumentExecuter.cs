@@ -269,6 +269,12 @@ namespace GraphQL
 
                 var field = fieldCollection.Value?.FirstOrDefault();
                 var fieldType = GetFieldDefinition(context.Schema, rootType, field);
+                var name = field.Alias ?? field.Name;
+
+                if (data.ContainsKey(name))
+                {
+                    continue;
+                }
 
                 if (!ShouldIncludeNode(context, field.Directives))
                 {
@@ -277,38 +283,9 @@ namespace GraphQL
 
                 if (CanResolveFromData(field, fieldType))
                 {
-                    var name = field.Alias ?? field.Name;
-                    if (data.ContainsKey(name))
-                    {
-                        continue;
-                    }
+                    var result = ResolveFieldFromData(context, rootType, source, fieldType, field);
 
-                    // part of a performance problem. we don't want to async resolve simple fields with a middleware layer inbetween.
-
-                    object result = null;
-
-                    if (fieldType.Resolver != null)
-                    {
-                        var rfc = new ResolveFieldContext(context, field, fieldType, source, rootType, null);
-                        try
-                        {
-                            result = fieldType.Resolver.Resolve(rfc); //should be a result not a task
-                        }
-                        catch(Exception exc)
-                        {
-                            var error = new ExecutionError($"Error trying to resolve {field.Name}.", exc);
-                            error.AddLocation(field, context.Document);
-                            context.Errors.Add(error);
-                        }
-                    }
-                    else
-                    {
-                        var value = NameFieldResolver.Resolve(source, field.Name);
-                        var scalarType = fieldType?.ResolvedType as ScalarGraphType;
-                        result = scalarType?.Serialize(value);
-                    }
-
-                    data.Add(fieldCollection.Key, result);
+                    data.Add(name, result);
                 }
                 else
                 {
@@ -319,11 +296,105 @@ namespace GraphQL
                         continue;
                     }
 
-                    data.Add(fieldCollection.Key, result.Value);
+                    data.Add(name, result.Value);
                 }
             }
 
             return data;
+        }
+
+        /// <summary>
+        ///     Resolve lists in a performant manor
+        /// </summary>
+        private async Task<List<object>> ResolveListFromData(ExecutionContext context, object source,
+            IGraphType graphType, Field field)
+        {
+            var result = new List<object>();
+            var listInfo = graphType as ListGraphType;
+            var subType = listInfo?.ResolvedType as IObjectGraphType;
+            var data = source as IEnumerable;
+            var visitedFragments = new List<string>();
+            var subFields = CollectFields(context, subType, field.SelectionSet, null, visitedFragments);
+
+            if (data == null)
+            {
+                var error = new ExecutionError("User error: expected an IEnumerable list though did not find one.");
+                error.AddLocation(field, context.Document);
+                throw error;
+            }
+
+            if (subType != null)
+            {
+                foreach (var node in data)
+                {
+                    var nodeResult = await ExecuteFieldsAsync(context, subType, node, subFields);
+
+                    result.Add(nodeResult);
+                }
+            }
+            else
+            {
+                foreach (var node in data)
+                {
+                    var nodeResult = await CompleteValueAsync(context, listInfo?.ResolvedType, new Fields{field}, node).ConfigureAwait(false);
+
+                    result.Add(nodeResult);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        ///     Resolve simple fields in a performant manor
+        /// </summary>
+        private static object ResolveFieldFromData(ExecutionContext context, IObjectGraphType rootType, object source,
+            FieldType fieldType, Field field)
+        {
+            object result = null;
+
+            try
+            {
+                if (fieldType.Resolver != null)
+                {
+                    var rfc = new ResolveFieldContext(context, field, fieldType, source, rootType, null);
+                
+                    result = fieldType.Resolver.Resolve(rfc);
+                }
+                else
+                {
+                    var value = NameFieldResolver.Resolve(source, field.Name);
+                    var scalarType = fieldType.ResolvedType as ScalarGraphType;
+
+                    result = scalarType?.Serialize(value);
+                }
+            }
+            catch (Exception exc)
+            {
+                var error = new ExecutionError($"Error trying to resolve {field.Name}.", exc);
+                error.AddLocation(field, context.Document);
+                context.Errors.Add(error);
+            }
+
+            return result;
+        }
+
+        private bool CanResolveListFromData(Field field, FieldType type)
+        {
+            var listInfo = type.ResolvedType as ListGraphType;
+            var subType = listInfo?.ResolvedType;
+
+            if (!(subType is ScalarGraphType))
+            {
+                return false;
+            }
+
+            if (type.Resolver != null)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private bool CanResolveFromData(Field field, FieldType type)
@@ -447,19 +518,7 @@ namespace GraphQL
 
             if (fieldType is ListGraphType)
             {
-                var list = result as IEnumerable;
-
-                if (list == null)
-                {
-                    var error = new ExecutionError("User error: expected an IEnumerable list though did not find one.");
-                    error.AddLocation(field, context.Document);
-                    throw error;
-                }
-
-                var listType = fieldType as ListGraphType;
-                var itemType = listType.ResolvedType;
-
-                var results = await list.MapAsync(async item => await CompleteValueAsync(context, itemType, fields, item).ConfigureAwait(false)).ConfigureAwait(false);
+                var results = await ResolveListFromData(context, result, fieldType, field);
 
                 return results;
             }
@@ -912,39 +971,41 @@ namespace GraphQL
 
         public bool ShouldIncludeNode(ExecutionContext context, Directives directives)
         {
-            if (directives != null)
+            if (directives == null || !directives.Any())
             {
-                var directive = directives.Find(DirectiveGraphType.Skip.Name);
-                if (directive != null)
-                {
-                    var values = GetArgumentValues(
-                        context.Schema,
-                        DirectiveGraphType.Skip.Arguments,
-                        directive.Arguments,
-                        context.Variables);
+                return true;
+            }
 
-                    object ifObj;
-                    values.TryGetValue("if", out ifObj);
+            var directive = directives.Find(DirectiveGraphType.Skip.Name);
+            if (directive != null)
+            {
+                var values = GetArgumentValues(
+                    context.Schema,
+                    DirectiveGraphType.Skip.Arguments,
+                    directive.Arguments,
+                    context.Variables);
 
-                    bool ifVal;
-                    return !(bool.TryParse(ifObj?.ToString() ?? string.Empty, out ifVal) && ifVal);
-                }
+                object ifObj;
+                values.TryGetValue("if", out ifObj);
 
-                directive = directives.Find(DirectiveGraphType.Include.Name);
-                if (directive != null)
-                {
-                    var values = GetArgumentValues(
-                        context.Schema,
-                        DirectiveGraphType.Include.Arguments,
-                        directive.Arguments,
-                        context.Variables);
+                bool ifVal;
+                return !(bool.TryParse(ifObj?.ToString() ?? string.Empty, out ifVal) && ifVal);
+            }
 
-                    object ifObj;
-                    values.TryGetValue("if", out ifObj);
+            directive = directives.Find(DirectiveGraphType.Include.Name);
+            if (directive != null)
+            {
+                var values = GetArgumentValues(
+                    context.Schema,
+                    DirectiveGraphType.Include.Arguments,
+                    directive.Arguments,
+                    context.Variables);
 
-                    bool ifVal;
-                    return bool.TryParse(ifObj?.ToString() ?? string.Empty, out ifVal) && ifVal;
-                }
+                object ifObj;
+                values.TryGetValue("if", out ifObj);
+
+                bool ifVal;
+                return bool.TryParse(ifObj?.ToString() ?? string.Empty, out ifVal) && ifVal;
             }
 
             return true;
