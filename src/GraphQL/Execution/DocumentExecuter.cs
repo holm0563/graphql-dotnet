@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -247,7 +248,7 @@ namespace GraphQL
             return operation;
         }
 
-        public Task<Dictionary<string, object>> ExecuteOperationAsync(ExecutionContext context)
+        public Task<IDictionary<string, object>> ExecuteOperationAsync(ExecutionContext context)
         {
             var rootType = GetOperationRootType(context.Document, context.Schema, context.Operation);
             var fields = CollectFields(
@@ -260,9 +261,9 @@ namespace GraphQL
             return ExecuteFieldsAsync(context, rootType, context.RootValue, fields);
         }
 
-        public async Task<Dictionary<string, object>> ExecuteFieldsAsync(ExecutionContext context, IObjectGraphType rootType, object source, Dictionary<string, Fields> fields)
+        public async Task<IDictionary<string, object>> ExecuteFieldsAsync(ExecutionContext context, IObjectGraphType rootType, object source, Dictionary<string, Fields> fields)
         {
-            var data = new Dictionary<string, object>();
+            var data = new ConcurrentDictionary<string, object>();
             var externalTasks = new List<Task>();
 
             foreach (var fieldCollection in fields)
@@ -277,7 +278,9 @@ namespace GraphQL
                 }
                 else
                 {
-                    externalTasks.Add(ExtractFieldAsync(context, rootType, source, field, fieldType, data));
+                    var task = Task.Run(()=>ExtractFieldAsync(context, rootType, source, field, fieldType, data));
+
+                    externalTasks.Add(task);
                 }
             }
 
@@ -290,7 +293,7 @@ namespace GraphQL
         }
 
         private async Task ExtractFieldAsync(ExecutionContext context, IObjectGraphType rootType, object source,
-            Field field, FieldType fieldType, Dictionary<string, object> data)
+            Field field, FieldType fieldType, ConcurrentDictionary<string, object> data)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
@@ -310,7 +313,7 @@ namespace GraphQL
             {
                 var result = ResolveFieldFromData(context, rootType, source, fieldType, field);
 
-                data.Add(name, result);
+                data.TryAdd(name, result);
             }
             else
             {
@@ -321,7 +324,7 @@ namespace GraphQL
                     return;
                 }
 
-                data.Add(name, result.Value);
+                data.TryAdd(name, result.Value);
             }
         }
 

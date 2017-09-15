@@ -73,7 +73,7 @@ namespace GraphQL.Tests.Execution.Performance
 
         private dynamic PeopleListSmall => new
         {
-            people = _people.Take(100)
+            people = _people.Take(100000)
         };
 
         [Fact]
@@ -107,7 +107,7 @@ namespace GraphQL.Tests.Execution.Performance
             {
                 _.Schema = Schema;
                 _.Query = query;
-                _.Root = PeopleList;
+                _.Root = PeopleListSmall;
                 _.Inputs = null;
                 _.UserContext = null;
                 _.CancellationToken = default(CancellationToken);
@@ -194,7 +194,7 @@ namespace GraphQL.Tests.Execution.Performance
             {
                 _.Schema = Schema;
                 _.Query = query;
-                _.Root = PeopleListSmall;
+                _.Root = PeopleList;
                 _.Inputs = null;
                 _.UserContext = null;
                 _.CancellationToken = default(CancellationToken);
