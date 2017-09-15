@@ -34,7 +34,7 @@ namespace GraphQL.Tests.Execution.Performance
             ExecutionResult runResult2 = null;
             smallListTimer.Start();
 
-            for (int x = 0; x < 10000; x++)
+            for (int x = 0; x < 100; x++)
             {
                 runResult2 = Executer.ExecuteAsync(_ =>
                 {
@@ -66,10 +66,6 @@ namespace GraphQL.Tests.Execution.Performance
                     id
                     name
                     appearsIn
-                    friends {
-                      name
-                      appearsIn
-                    }
                   }
                 }
             ";
@@ -78,9 +74,9 @@ namespace GraphQL.Tests.Execution.Performance
             ExecutionResult runResult2 = null;
             smallListTimer.Start();
 
-            for (int x = 0; x < 100; x++)
+            for (int x = 0; x < 10000; x++)
             {
-                var executer = new DocumentExecuter(new GraphQLDocumentBuilder(), null, new ComplexityAnalyzer());
+                var executer = new DocumentExecuter(new GraphQLDocumentBuilder(), new DocumentValidator(), new ComplexityAnalyzer());
                 runResult2 = executer.ExecuteAsync(_ =>
                 {
                     _.Schema = Schema;

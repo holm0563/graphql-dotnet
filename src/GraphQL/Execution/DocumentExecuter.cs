@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using GraphQL.Execution;
@@ -265,42 +266,53 @@ namespace GraphQL
 
             foreach (var fieldCollection in fields)
             {
-                context.CancellationToken.ThrowIfCancellationRequested();
-
-                var field = fieldCollection.Value?.FirstOrDefault();
-                var fieldType = GetFieldDefinition(context.Schema, rootType, field);
-                var name = field.Alias ?? field.Name;
-
-                if (data.ContainsKey(name))
-                {
-                    continue;
-                }
-
-                if (!ShouldIncludeNode(context, field.Directives))
-                {
-                    continue;
-                }
-
-                if (CanResolveFromData(field, fieldType))
-                {
-                    var result = ResolveFieldFromData(context, rootType, source, fieldType, field);
-
-                    data.Add(name, result);
-                }
-                else
-                {
-                    var result = await ResolveFieldAsync(context, rootType, source, fieldCollection.Value, fieldType);
-
-                    if (result.Skip)
-                    {
-                        continue;
-                    }
-
-                    data.Add(name, result.Value);
-                }
+                await ExtractFieldAsync(context, rootType, source, fieldCollection, data);
             }
 
+            //doing this async is twice as slow. My guess is too many very quick tasks async done.
+            //var scheduleTaskList = fields.Select(field =>
+            //    ExtractFieldAsync(context, rootType, source, field, data));
+            //await Task.WhenAll(scheduleTaskList);
+
             return data;
+        }
+
+        private async Task ExtractFieldAsync(ExecutionContext context, IObjectGraphType rootType, object source,
+            KeyValuePair<string, Fields> fieldCollection, Dictionary<string, object> data)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+
+            var field = fieldCollection.Value?.FirstOrDefault();
+            var fieldType = GetFieldDefinition(context.Schema, rootType, field);
+            var name = field.Alias ?? field.Name;
+
+            if (data.ContainsKey(name))
+            {
+                return;
+            }
+
+            if (!ShouldIncludeNode(context, field.Directives))
+            {
+                return;
+            }
+
+            if (CanResolveFromData(field, fieldType))
+            {
+                var result = ResolveFieldFromData(context, rootType, source, fieldType, field);
+
+                data.Add(name, result);
+            }
+            else
+            {
+                var result = await ResolveFieldAsync(context, rootType, source, fieldCollection.Value, fieldType);
+
+                if (result.Skip)
+                {
+                    return;
+                }
+
+                data.Add(name, result.Value);
+            }
         }
 
         /// <summary>
@@ -336,11 +348,31 @@ namespace GraphQL
             {
                 foreach (var node in data)
                 {
-                    var nodeResult = await CompleteValueAsync(context, listInfo?.ResolvedType, new Fields{field}, node).ConfigureAwait(false);
+                    var nodeResult = await CompleteValueAsync(context, listInfo?.ResolvedType, new Fields { field }, node).ConfigureAwait(false);
 
                     result.Add(nodeResult);
                 }
             }
+
+            //note running these truly async is much slower
+            //if (subType != null)
+            //{
+            //    var scheduleTaskList = data.Cast<object>().Select(node => ExecuteFieldsAsync(context, subType, node, subFields));
+
+            //    await Task.WhenAll(scheduleTaskList);
+
+            //    result.AddRange(scheduleTaskList.Select(t => t.Result));
+
+            //}
+            //else
+            //{
+            //    var scheduleTaskList = data.Cast<object>()
+            //        .Select(node => CompleteValueAsync(context, listInfo?.ResolvedType, new Fields { field }, node));
+
+            //    await Task.WhenAll(scheduleTaskList);
+
+            //    result.AddRange(scheduleTaskList.Select(t => t.Result));
+            //}
 
             return result;
         }
