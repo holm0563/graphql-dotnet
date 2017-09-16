@@ -11,6 +11,11 @@ namespace GraphQL.Resolvers
             return Resolve(context?.Source, context?.FieldAst?.Name);
         }
 
+        public bool RunThreaded()
+        {
+            return false;
+        }
+
         public static object Resolve(object source, string name)
         {
             if (source == null || name == null)

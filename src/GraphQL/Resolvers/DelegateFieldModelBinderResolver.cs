@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -13,6 +13,11 @@ namespace GraphQL.Resolvers
         public DelegateFieldModelBinderResolver(Delegate resolver)
         {
             _resolver = resolver ?? throw new ArgumentNullException("A resolver function must be specified");
+        }
+
+        public bool RunThreaded()
+        {
+            return false;
         }
 
         public object Resolve(ResolveFieldContext context)

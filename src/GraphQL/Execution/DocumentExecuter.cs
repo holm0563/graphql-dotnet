@@ -286,7 +286,7 @@ namespace GraphQL
 
             if (externalTasks.Any())
             {
-                await Task.WhenAll(externalTasks);
+                Task.WaitAll(externalTasks.ToArray());
             }
 
             return data;

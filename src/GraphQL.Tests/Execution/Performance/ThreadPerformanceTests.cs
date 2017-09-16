@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using GraphQL.Conversion;
 using GraphQL.Execution;
 using GraphQL.Types;
@@ -25,8 +26,9 @@ namespace GraphQL.Tests.Execution.Performance
             {
                 Name = "Query";
 
-                Field<StringGraphType>("halfSecond", resolve:c=>Get(500, "Half"));
-                Field<StringGraphType>("quarterSecond", resolve:c=>Get(500, "Quarter"));
+                //todo: finish and make a resolver type that defaults to threads
+                FieldAsync<StringGraphType>("halfSecond", resolve: async c => Get(500, "Half"));
+                FieldAsync<StringGraphType>("quarterSecond", resolve: async c=>Get(500, "Quarter"));
             }
 
             private string Get(int milliseconds, string result)

@@ -1,4 +1,4 @@
-﻿using System.Threading.Tasks;
+using System.Threading.Tasks;
 using GraphQL.Resolvers;
 using GraphQL.Types;
 
@@ -29,6 +29,11 @@ namespace GraphQL.Instrumentation
             }
 
             return result;
+        }
+
+        public bool RunThreaded()
+        {
+            return true;
         }
 
         object IFieldResolver.Resolve(ResolveFieldContext context)

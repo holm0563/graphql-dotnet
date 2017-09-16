@@ -73,7 +73,7 @@ namespace GraphQL.Tests.Execution.Performance
 
         private dynamic PeopleListSmall => new
         {
-            people = _people.Take(100000)
+            people = _people.Take(1000)
         };
 
         [Fact]
