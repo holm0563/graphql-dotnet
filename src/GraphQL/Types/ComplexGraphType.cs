@@ -118,6 +118,48 @@ namespace GraphQL.Types
             });
         }
 
+        public FieldType FieldAsync(
+            Type type,
+            string name,
+            string description = null,
+            QueryArguments arguments = null,
+            Func<ResolveFieldContext<TSourceType>, object> resolve = null,
+            string deprecationReason = null)
+        {
+            return AddField(new FieldType
+            {
+                Name = name,
+                Description = description,
+                DeprecationReason = deprecationReason,
+                Type = type,
+                Arguments = arguments,
+                Resolver = resolve != null
+                    ? new AsyncFuncFieldResolver<TSourceType, object>(resolve)
+                    : null,
+            });
+        }
+
+        public FieldType FieldAsync<TGraphType>(
+            string name,
+            string description = null,
+            QueryArguments arguments = null,
+            Func<ResolveFieldContext<TSourceType>, object> resolve = null,
+            string deprecationReason = null)
+            where TGraphType : IGraphType
+        {
+            return AddField(new FieldType
+            {
+                Name = name,
+                Description = description,
+                DeprecationReason = deprecationReason,
+                Type = typeof(TGraphType),
+                Arguments = arguments,
+                Resolver = resolve != null
+                    ? new AsyncFuncFieldResolver<TSourceType, object>(resolve)
+                    : null,
+            });
+        }
+
         public FieldType FieldAsync<TGraphType>(
             string name,
             string description = null,
@@ -134,7 +176,7 @@ namespace GraphQL.Types
                 Type = typeof(TGraphType),
                 Arguments = arguments,
                 Resolver = resolve != null
-                    ? new FuncFieldResolver<TSourceType, Task<object>>(resolve)
+                    ? new AsyncFuncFieldResolver<TSourceType, Task<object>>(resolve)
                     : null,
             });
         }

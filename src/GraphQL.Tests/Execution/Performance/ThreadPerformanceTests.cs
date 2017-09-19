@@ -26,9 +26,8 @@ namespace GraphQL.Tests.Execution.Performance
             {
                 Name = "Query";
 
-                //todo: finish and make a resolver type that defaults to threads
-                FieldAsync<StringGraphType>("halfSecond", resolve: async c => Get(500, "Half"));
-                FieldAsync<StringGraphType>("quarterSecond", resolve: async c=>Get(500, "Quarter"));
+                FieldAsync<StringGraphType>("halfSecond", resolve: c=>Get(500, "Half"));
+                FieldAsync<StringGraphType>("quarterSecond", resolve: c=>Get(250, "Quarter"));
             }
 
             private string Get(int milliseconds, string result)
@@ -79,7 +78,7 @@ namespace GraphQL.Tests.Execution.Performance
 
             Assert.Null(runResult2.Errors);
 
-            Assert.True(smallListTimer.ElapsedMilliseconds < 800);
+            Assert.True(smallListTimer.ElapsedMilliseconds < 700);
         }
     }
 }

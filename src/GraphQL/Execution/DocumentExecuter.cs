@@ -271,7 +271,7 @@ namespace GraphQL
                 var field = fieldCollection.Value?.FirstOrDefault();
                 var fieldType = GetFieldDefinition(context.Schema, rootType, field);
 
-                if (fieldType.Resolver == null)
+                if (!fieldType.Resolver.RunThreaded())
                 {
                     //simple to resolve, to expensive to use a task.
                     await ExtractFieldAsync(context, rootType, source, field, fieldType, data);

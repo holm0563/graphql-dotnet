@@ -18,7 +18,7 @@ namespace GraphQL.Resolvers
             return _resolver(context);
         }
 
-        public bool RunThreaded()
+        public virtual bool RunThreaded()
         {
             return false;
         }
@@ -42,7 +42,7 @@ namespace GraphQL.Resolvers
             _resolver = resolver;
         }
 
-        public bool RunThreaded()
+        public virtual bool RunThreaded()
         {
             return false;
         }
