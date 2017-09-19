@@ -42,7 +42,7 @@ namespace GraphQL
         private readonly IComplexityAnalyzer _complexityAnalyzer;
 
         public DocumentExecuter()
-            : this(new GraphQLDocumentBuilder(), new DocumentValidator(), new ComplexityAnalyzer())
+            : this(new GraphQLDocumentBuilder(), new CachedDocumentValidator(), new ComplexityAnalyzer())
         {
         }
 
@@ -271,7 +271,7 @@ namespace GraphQL
                 var field = fieldCollection.Value?.FirstOrDefault();
                 var fieldType = GetFieldDefinition(context.Schema, rootType, field);
 
-                if (!fieldType.Resolver.RunThreaded())
+                if (fieldType?.Resolver == null || !fieldType.Resolver.RunThreaded())
                 {
                     //simple to resolve, to expensive to use a task.
                     await ExtractFieldAsync(context, rootType, source, field, fieldType, data);

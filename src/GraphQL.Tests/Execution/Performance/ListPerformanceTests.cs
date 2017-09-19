@@ -10,13 +10,18 @@ using GraphQL.Types;
 using GraphQL.Validation;
 using GraphQL.Validation.Complexity;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace GraphQL.Tests.Execution.Performance
 {
     public class ListPerformanceTests : QueryTestBase<ListPerformanceSchema>
     {
-        public ListPerformanceTests()
+        private readonly ITestOutputHelper _output;
+
+        public ListPerformanceTests(ITestOutputHelper output)
         {
+            _output = output;
+
             Services.Register<PeopleType>();
 
             Services.Singleton(() => new ListPerformanceSchema(type => (GraphType)Services.Get(type)));
@@ -63,17 +68,12 @@ namespace GraphQL.Tests.Execution.Performance
             }
         }
 
-        private const int PerformanceIterations = 1000000;
+        private const int PerformanceIterations = 10000;
         private readonly List<Person> _people;
 
         private dynamic PeopleList => new
         {
             people = _people
-        };
-
-        private dynamic PeopleListSmall => new
-        {
-            people = _people.Take(1000)
         };
 
         [Fact]
@@ -107,7 +107,7 @@ namespace GraphQL.Tests.Execution.Performance
             {
                 _.Schema = Schema;
                 _.Query = query;
-                _.Root = PeopleListSmall;
+                _.Root = PeopleList;
                 _.Inputs = null;
                 _.UserContext = null;
                 _.CancellationToken = default(CancellationToken);
@@ -117,8 +117,9 @@ namespace GraphQL.Tests.Execution.Performance
 
             smallListTimer.Stop();
 
-            Assert.Null(runResult2.Errors);
+            _output.WriteLine($"Total Milliseconds: {smallListTimer.ElapsedMilliseconds}");
 
+            Assert.Null(runResult2.Errors);
             Assert.True(smallListTimer.ElapsedMilliseconds < 415 * 2); //machine specific data with a buffer
         }
 
@@ -151,8 +152,9 @@ namespace GraphQL.Tests.Execution.Performance
 
             smallListTimer.Stop();
 
-            Assert.Null(runResult2.Errors);
+            _output.WriteLine($"Total Milliseconds: {smallListTimer.ElapsedMilliseconds}");
 
+            Assert.Null(runResult2.Errors);
             Assert.True(smallListTimer.ElapsedMilliseconds < 393 * 2); //machine specific data with a buffer
         }
 
@@ -204,8 +206,9 @@ namespace GraphQL.Tests.Execution.Performance
 
             smallListTimer.Stop();
 
-            Assert.Null(runResult2.Errors);
+            _output.WriteLine($"Total Milliseconds: {smallListTimer.ElapsedMilliseconds}");
 
+            Assert.Null(runResult2.Errors);
             Assert.True(smallListTimer.ElapsedMilliseconds < 398 * 2); //machine specific data with a buffer
         }
     }

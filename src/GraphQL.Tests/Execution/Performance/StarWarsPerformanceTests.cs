@@ -6,11 +6,18 @@ using GraphQL.Tests.StarWars;
 using GraphQL.Validation;
 using GraphQL.Validation.Complexity;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace GraphQL.Tests.Execution.Performance
 {
     public class StarWarsPerformanceTests : StarWarsTestBase
     {
+        private readonly ITestOutputHelper _output;
+
+        public StarWarsPerformanceTests(ITestOutputHelper output)
+        {
+            _output = output;
+        }
 
         [Fact]
         public void Executes_StarWarsBasicQuery_Performant()
@@ -34,7 +41,7 @@ namespace GraphQL.Tests.Execution.Performance
             ExecutionResult runResult2 = null;
             smallListTimer.Start();
 
-            for (int x = 0; x < 100; x++)
+            for (int x = 0; x < 10000; x++)
             {
                 runResult2 = Executer.ExecuteAsync(_ =>
                 {
@@ -51,9 +58,10 @@ namespace GraphQL.Tests.Execution.Performance
 
             smallListTimer.Stop();
 
-            Assert.Null(runResult2.Errors);
+            _output.WriteLine($"Milliseconds: {smallListTimer.ElapsedMilliseconds}");
 
-            Assert.True(smallListTimer.ElapsedMilliseconds < 305 * 2); //machine specific data with a buffer
+            Assert.Null(runResult2.Errors);
+            Assert.True(smallListTimer.ElapsedMilliseconds < 1212 * 2); //machine specific data with a buffer
         }
 
         [Fact]
@@ -74,9 +82,10 @@ namespace GraphQL.Tests.Execution.Performance
             ExecutionResult runResult2 = null;
             smallListTimer.Start();
 
-            for (int x = 0; x < 10000; x++)
+            for (int x = 0; x < 100; x++)
             {
-                var executer = new DocumentExecuter(new GraphQLDocumentBuilder(), new DocumentValidator(), new ComplexityAnalyzer());
+                //cache isn't doing any good here. 
+                var executer = new DocumentExecuter(new GraphQLDocumentBuilder(), new CachedDocumentValidator(), new ComplexityAnalyzer());
                 runResult2 = executer.ExecuteAsync(_ =>
                 {
                     _.Schema = Schema;
@@ -92,9 +101,10 @@ namespace GraphQL.Tests.Execution.Performance
 
             smallListTimer.Stop();
 
-            Assert.Null(runResult2.Errors);
+            _output.WriteLine($"Time: {smallListTimer.Elapsed}");
 
-            Assert.True(smallListTimer.ElapsedMilliseconds < 327 * 2); //machine specific data with a buffer
+            Assert.Null(runResult2.Errors);
+            Assert.True(smallListTimer.ElapsedMilliseconds < 247 * 2); //machine specific data with a buffer
         }
     }
 }

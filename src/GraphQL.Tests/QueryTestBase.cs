@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -27,7 +27,7 @@ namespace GraphQL.Tests
         public QueryTestBase()
         {
             Services = new SimpleContainer();
-            Executer = new DocumentExecuter(new TDocumentBuilder(), new DocumentValidator(), new ComplexityAnalyzer());
+            Executer = new DocumentExecuter(new TDocumentBuilder(), new CachedDocumentValidator(), new ComplexityAnalyzer());
             Writer = new DocumentWriter(indent: true);
         }
 
