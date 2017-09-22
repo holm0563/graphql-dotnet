@@ -16,6 +16,7 @@ using GraphQL.Validation;
 using GraphQL.Validation.Complexity;
 using ExecutionContext = GraphQL.Execution.ExecutionContext;
 using Field = GraphQL.Language.AST.Field;
+using System.Collections.Specialized;
 
 namespace GraphQL
 {
@@ -289,7 +290,22 @@ namespace GraphQL
                 Task.WaitAll(externalTasks.ToArray());
             }
 
-            return data;
+            var ordered = new Dictionary<string, object>();
+
+            foreach (var fieldCollection in fields)
+            {
+                var field = fieldCollection.Value?.FirstOrDefault();
+                var name = field?.Alias ?? field?.Name;
+
+                if (!data.ContainsKey(name))
+                {
+                    continue;
+                }
+
+                ordered.Add(name, data[name]);
+            }
+
+            return ordered;
         }
 
         private async Task ExtractFieldAsync(ExecutionContext context, IObjectGraphType rootType, object source,
