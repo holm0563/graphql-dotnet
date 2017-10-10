@@ -104,7 +104,7 @@ namespace GraphQL
                 var nonNull = (NonNullGraphType) type;
                 var ofType = nonNull.ResolvedType;
 
-                if (valueAst == null || valueAst is NullValue)
+                if (valueAst == null)
                 {
                     if (ofType != null)
                     {
@@ -116,11 +116,6 @@ namespace GraphQL
 
                 return IsValidLiteralValue(ofType, valueAst, schema);
             }
-            else if (valueAst is NullValue)
-            {
-                return new string[] { };
-            }
-
 
             if (valueAst == null)
             {
@@ -313,7 +308,7 @@ namespace GraphQL
 
             if (value == null || type == null)
             {
-                return new NullValue();
+                return null;
             }
 
             // Convert IEnumerable to GraphQL list. If the GraphQLType is a list, but
