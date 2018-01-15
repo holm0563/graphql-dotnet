@@ -40,18 +40,21 @@ namespace GraphQL
         private readonly IDocumentBuilder _documentBuilder;
         private readonly IDocumentValidator _documentValidator;
         private readonly IComplexityAnalyzer _complexityAnalyzer;
+        private readonly int? _maxTasksAllowed;
         private static readonly ValidationResult validResult = new ValidationResult();
+        private static int _tasksRunning = 0;
 
         public DocumentExecuter()
             : this(new GraphQLDocumentBuilder(), new DocumentValidator(), new ComplexityAnalyzer())
         {
         }
 
-        public DocumentExecuter(IDocumentBuilder documentBuilder, IDocumentValidator documentValidator, IComplexityAnalyzer complexityAnalyzer)
+        public DocumentExecuter(IDocumentBuilder documentBuilder, IDocumentValidator documentValidator, IComplexityAnalyzer complexityAnalyzer, int? maxTasksAllowed = null)
         {
             _documentBuilder = documentBuilder;
             _documentValidator = documentValidator;
             _complexityAnalyzer = complexityAnalyzer;
+            _maxTasksAllowed = maxTasksAllowed;
         }
 
         [Obsolete("This method will be removed in a future version.  Use ExecutionOptions parameter.")]
@@ -276,18 +279,18 @@ namespace GraphQL
             CancellationToken cancellationToken,
             Metrics metrics)
         {
-            var context = new ExecutionContext();
-            context.Document = document;
-            context.Schema = schema;
-            context.RootValue = root;
-            context.UserContext = userContext;
-
-            context.Operation = operation;
-            context.Variables = GetVariableValues(document, schema, operation?.Variables, inputs);
-            context.Fragments = document.Fragments;
-            context.CancellationToken = cancellationToken;
-
-            context.Metrics = metrics;
+            var context = new ExecutionContext
+            {
+                Document = document,
+                Schema = schema,
+                RootValue = root,
+                UserContext = userContext,
+                Operation = operation,
+                Variables = GetVariableValues(document, schema, operation?.Variables, inputs),
+                Fragments = document.Fragments,
+                CancellationToken = cancellationToken,
+                Metrics = metrics
+            };
 
             return context;
         }
@@ -327,13 +330,16 @@ namespace GraphQL
                 var field = fieldCollection.Value;
                 var fieldType = GetFieldDefinition(context.Document, context.Schema, rootType, field);
 
-                if (fieldType?.Resolver == null || !fieldType.Resolver.RunThreaded() || context.Operation.OperationType == OperationType.Mutation)
+                if (fieldType?.Resolver == null || !fieldType.Resolver.RunThreaded() || context.Operation.OperationType == OperationType.Mutation || fields.Count == 1 ||
+                    _tasksRunning >= (_maxTasksAllowed ?? int.MaxValue))
                 {
                     await ExtractFieldAsync(context, rootType, source, field, fieldType, data, currentPath);
                 }
                 else
                 {
-                    var task = Task.Run(() => ExtractFieldAsync(context, rootType, source, field, fieldType, data, currentPath));
+                    _tasksRunning++;
+
+                    var task = Task.Run(() => ExtractFieldAsync(context, rootType, source, field, fieldType, data, currentPath), context.CancellationToken);
 
                     externalTasks.Add(task);
                 }
@@ -341,7 +347,9 @@ namespace GraphQL
 
             if (externalTasks.Count > 0)
             {
-                Task.WaitAll(externalTasks.ToArray());
+                await Task.WhenAll(externalTasks.ToArray());
+
+                _tasksRunning -= externalTasks.Count;
             }
 
             var ordered = new Dictionary<string, object>();

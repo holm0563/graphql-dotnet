@@ -4,7 +4,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using GraphQL.Conversion;
+using GraphQL.Execution;
 using GraphQL.Types;
+using GraphQL.Validation;
+using GraphQL.Validation.Complexity;
 using Xunit;
 
 namespace GraphQL.Tests.Execution.Performance
@@ -99,6 +102,82 @@ namespace GraphQL.Tests.Execution.Performance
             Assert.Null(runResult2.Errors);
 
             Assert.True(smallListTimer.ElapsedMilliseconds < 900);
+        }
+
+        [Fact]
+        public void Executes_IsNotQuickerThanTotalTaskTime_With0Threads()
+        {
+            var query = @"
+                query HeroNameAndFriendsQuery {
+                  halfSecond,
+                  quarterSecond
+                }
+            ";
+
+            var smallListTimer = new Stopwatch();
+            ExecutionResult runResult2 = null;
+            smallListTimer.Start();
+
+            var executer = new DocumentExecuter(new GraphQLDocumentBuilder(), new DocumentValidator(), new ComplexityAnalyzer(), 0);
+
+            runResult2 = executer.ExecuteAsync(_ =>
+            {
+                _.EnableMetrics = false;
+                _.SetFieldMiddleware = false;
+                _.EnableDocumentValidation = false;
+                _.Schema = Schema;
+                _.Query = query;
+                _.Root = null;
+                _.Inputs = null;
+                _.UserContext = null;
+                _.CancellationToken = default(CancellationToken);
+                _.ValidationRules = null;
+                _.FieldNameConverter = new CamelCaseFieldNameConverter();
+            }).GetAwaiter().GetResult();
+
+            smallListTimer.Stop();
+
+            Assert.Null(runResult2.Errors);
+
+            Assert.True(smallListTimer.ElapsedMilliseconds > 900);
+        }
+
+        [Fact]
+        public void CancelationToken_StopsInTime()
+        {
+            var query = @"
+                query HeroNameAndFriendsQuery {
+                  halfSecond,
+                  quarterSecond
+                }
+            ";
+
+            var smallListTimer = new Stopwatch();
+            smallListTimer.Start();
+
+            using (var tokenSource = new CancellationTokenSource())
+            {
+                tokenSource.CancelAfter(100);
+
+                Executer.ExecuteAsync(new ExecutionOptions
+                {
+                    EnableMetrics = false,
+                    SetFieldMiddleware = false,
+                    EnableDocumentValidation = false,
+                    Schema = Schema,
+                    Query = query,
+                    Root = null,
+                    Inputs = null,
+                    UserContext = null,
+                    CancellationToken = tokenSource.Token,
+                    ValidationRules = null,
+                    FieldNameConverter = new CamelCaseFieldNameConverter()
+                }).GetAwaiter().GetResult();
+            }
+
+            smallListTimer.Stop();
+
+            Assert.True(smallListTimer.ElapsedMilliseconds < 500);
         }
 
         [Fact]

@@ -1,6 +1,5 @@
-﻿using System.IO;
+using System.IO;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.StaticFiles;
 
 namespace GraphQL.GraphiQLCore
 {
